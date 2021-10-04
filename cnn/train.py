@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import glob
 import numpy as np
@@ -9,6 +10,7 @@ import logging
 import argparse
 import genotypes
 from tqdm import tqdm
+from datetime import datetime as dt
 
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
@@ -27,12 +29,15 @@ parser.add_argument('--data', type=str, default='./data', help='location of the 
 parser.add_argument('--batch_size', type=int, default=96, help='batch size')
 parser.add_argument('--learning_rate', type=float, default=0.025, help='init learning rate')
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
+#parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
+parser.add_argument('--report_freq', type=int, default=50, help='report frequency')
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
-parser.add_argument('--epochs', type=int, default=2, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=600, help='num of training epochs')
 parser.add_argument('--cutout', action='store_true', default=False, help='use cutout')
 parser.add_argument('--save', type=str, default='EXP', help='experiment name')
-parser.add_argument('--arch', type=str, default='DARTS', help='which architecture to use')
 parser.add_argument('--seed', type=int, default=0, help='random seed')
+parser.add_argument('--arch', type=str, default='DARTS', help='which architecture to use')
+#parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
 parser.add_argument('--epsilon', type=float, default=0.3, help='adversarial training epsilon')
 parser.add_argument('--training_mode', type=str, default='natural', const='natural', nargs='?', choices=['adversarial', 'natural'])
 args = parser.parse_args()
@@ -96,22 +101,35 @@ def main():
     # scheduling learning rate (change learning rate step by step)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, float(args.epochs))
 
+    now = dt.now()
+    start = now.strftime('%p%I:%M:%S')
+
     # --- Training ---
     for epoch in range(args.epochs):    # loop over the dataset multiple times
-        train(epoch, train_queue, model, criterion, optimizer)      # 
-        utils.save(model, os.path.join(args.save, 'weights.pt'))    # save model as pt file
-    print('Finished Training')
+        logging.info('epoch %d lr %e', epoch, scheduler.get_last_lr()[0])
+        
+        train_acc, train_obj = train(epoch, train_queue, model, criterion, optimizer, start)
+        logging.info('train_acc %f', train_acc)
 
-def train(epoch, train_queue, model, criterion, optimizer):
-    running_loss = 0.0
+        scheduler.step()
+
+        utils.save(model, os.path.join(args.save, 'weights.pt'))    # save model as pt file
+
+
+def train(epoch, train_queue, model, criterion, optimizer, start):
+    objs = utils.AvgrageMeter()
+    top1 = utils.AvgrageMeter()
+    top5 = utils.AvgrageMeter()
+    model.train()
     attack = FastGradientSignUntargeted(model, args.epsilon, _type='l2')
 
+    # plot progress bar
     with tqdm(total=len(train_queue),unit='batch') as progress_bar:
-        progress_bar.set_description(f"Epoch[{epoch}/{args.epochs}](training)")
+        progress_bar.set_description(f"Epoch[{epoch}/{args.epochs}](training) start: " + start)
 
         for step, (input, target) in enumerate(train_queue, 0): # input: image, target: label
             input = Variable(input).cuda()
-            target = Variable(target).cuda()
+            target = Variable(target).cuda(non_blocking=True)
 
             optimizer.zero_grad()    # zero the parameter gradients
 
@@ -120,6 +138,7 @@ def train(epoch, train_queue, model, criterion, optimizer):
                 adv_sample = attack.perturb(input, target, 'mean')
                 logits, logits_aux = model(adv_sample)
 
+            # normal training
             elif args.training_mode == 'natural':
                 logits, logits_aux = model(input)
 
@@ -130,19 +149,24 @@ def train(epoch, train_queue, model, criterion, optimizer):
             # nn.utils.clip_grad_norm(model.parameters(), args.grad_clip)
             optimizer.step()
 
+            prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))
+            n = input.size(0)
+            objs.update(loss.item(), n)
+            top1.update(prec1.item(), n)
+            top5.update(prec5.item(), n)
+
             # print statistics
-            running_loss += loss.item()
-            if step % 2000 == 1999:    # print every 2000 mini-batches
-                print('[%d, %5d] loss: %.3f' %
-                    (epoch + 1, step + 1, running_loss / 2000))
-                running_loss = 0.0
+            if step % args.report_freq == 0:
+                logging.info('train %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
 
                 if args.training_mode == 'adversarial':
                     visualize.save_adversarial_img(adv_sample, input, target, args.epsilon, step)
             
+            now = dt.now()
+            progress_bar.set_postfix({"loss":loss.item(),"accuracy":top1.avg, "now":now.strftime('%p%I:%M:%S')})
             progress_bar.update(1)
             
-    return running_loss
+    return top1.avg, objs.avg
 
 if __name__ == '__main__':
     main()

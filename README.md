@@ -11,6 +11,12 @@ python3 train.py --training_mode natural
 ## Adversarial training
 python3 train.py --training_mode adversarial
 
+## Natural test
+python3 test.py --test_mode natural
+
+## Adversarial attack
+python3 test.py --test_mode adversarial
+
 # ディレクトリ構成
 ## utils.py
 主に実験の記録用
