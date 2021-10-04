@@ -1,7 +1,7 @@
 import os
 import time
 import glob
-
+import numpy as np
 from matplotlib import image
 import torch
 import utils
@@ -11,6 +11,7 @@ import genotypes
 from tqdm import tqdm
 
 import torch.nn as nn
+import torch.backends.cudnn as cudnn
 import torchvision.datasets as dset
 
 from torch.autograd import Variable
@@ -31,6 +32,7 @@ parser.add_argument('--epochs', type=int, default=2, help='num of training epoch
 parser.add_argument('--cutout', action='store_true', default=False, help='use cutout')
 parser.add_argument('--save', type=str, default='EXP', help='experiment name')
 parser.add_argument('--arch', type=str, default='DARTS', help='which architecture to use')
+parser.add_argument('--seed', type=int, default=0, help='random seed')
 parser.add_argument('--epsilon', type=float, default=0.3, help='adversarial training epsilon')
 parser.add_argument('--training_mode', type=str, default='natural', const='natural', nargs='?', choices=['adversarial', 'natural'])
 args = parser.parse_args()
@@ -49,12 +51,21 @@ def main():
         sys.exit(1)
     
     torch.cuda.set_device(args.gpu)
+    # optimize in cuDNN
+    cudnn.benchmark = True 
+    cudnn.enabled = True
+
+    # set the seed of random
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed(args.seed)
+
     logging.info('gpu device = %d' % args.gpu)
     logging.info("args = %s", args)
 
     # genotype
     genotype = eval("genotypes.%s" % args.arch)
-    print(genotype)
+    # print(genotype)
     model = Network(CIFAR_CLASSES)
     model = model.cuda()
 
@@ -85,9 +96,6 @@ def main():
     # scheduling learning rate (change learning rate step by step)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, float(args.epochs))
 
-    classes = ('plane', 'car', 'bird', 'cat',
-            'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-    
     # --- Training ---
     for epoch in range(args.epochs):    # loop over the dataset multiple times
         train(epoch, train_queue, model, criterion, optimizer)      # 

@@ -5,7 +5,6 @@ import torch
     
 classes = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 
-
 # 敵対的サンプルの保存
 def save_adversarial_img(adv_sample, input, target, epsilon, step):
     cpu = torch.device('cpu')
