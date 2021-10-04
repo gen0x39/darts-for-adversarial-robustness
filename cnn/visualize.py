@@ -53,6 +53,6 @@ def save_adversarial_img(adv_sample, input, target, epsilon, step):
     save_dir = "./adversarial_example"
     plt.savefig(os.path.join(save_dir, fname), dpi = 64, facecolor = "lightgray", tight_layout = True)
 
-    print(np.all(adv_img == ori_img))
-    print(ori_img)
-    print(adv_img)
+    #print(np.all(adv_img == ori_img))
+    #print(ori_img)
+    #print(adv_img)
