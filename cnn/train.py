@@ -8,8 +8,7 @@ import utils
 import logging
 import argparse
 import genotypes
-import numpy as np
-import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 import torch.nn as nn
 import torchvision.datasets as dset
@@ -18,13 +17,14 @@ from torch.autograd import Variable
 from model import NetworkCIFAR as Network
 
 from attack import FastGradientSignUntargeted
+import visualize
 
 # --- Experiment settings ---
 # Command line arguments
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--data', type=str, default='./data', help='location of the data corpus')
-parser.add_argument('--batch_size', type=int, default=4, help='batch size')
-parser.add_argument('--learning_rate', type=float, default=0.001, help='init learning rate')
+parser.add_argument('--batch_size', type=int, default=96, help='batch size')
+parser.add_argument('--learning_rate', type=float, default=0.025, help='init learning rate')
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--epochs', type=int, default=2, help='num of training epochs')
@@ -32,6 +32,7 @@ parser.add_argument('--cutout', action='store_true', default=False, help='use cu
 parser.add_argument('--save', type=str, default='EXP', help='experiment name')
 parser.add_argument('--arch', type=str, default='DARTS', help='which architecture to use')
 parser.add_argument('--epsilon', type=float, default=0.3, help='adversarial training epsilon')
+parser.add_argument('--training_mode', type=str, default='natural', const='natural', nargs='?', choices=['adversarial', 'natural'])
 args = parser.parse_args()
 
 # Record of experiment date and time
@@ -55,10 +56,12 @@ def main():
     genotype = eval("genotypes.%s" % args.arch)
     print(genotype)
     model = Network(CIFAR_CLASSES)
+    model = model.cuda()
 
     logging.info("param size = %fMB", utils.count_parameters_in_MB(model))
 
     criterion = nn.CrossEntropyLoss()   # loss function
+    criterion = criterion.cuda()
     optimizer = torch.optim.SGD(        # optimizer
         model.parameters(), 
         lr=args.learning_rate, 
@@ -94,77 +97,43 @@ def main():
 def train(epoch, train_queue, model, criterion, optimizer):
     running_loss = 0.0
     attack = FastGradientSignUntargeted(model, args.epsilon, _type='l2')
-    classes = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 
-    for step, (input, target) in enumerate(train_queue, 0): # input: image, target: label
-        #input = Variable(input).cuda()
-        #target = Variable(target).cuda()
+    with tqdm(total=len(train_queue),unit='batch') as progress_bar:
+        progress_bar.set_description(f"Epoch[{epoch}/{args.epochs}](training)")
 
-        optimizer.zero_grad()    # zero the parameter gradients
+        for step, (input, target) in enumerate(train_queue, 0): # input: image, target: label
+            input = Variable(input).cuda()
+            target = Variable(target).cuda()
 
-        adv_sample = attack.perturb(input, target, 'mean')
-    
-        # forward + backward + optimize
-        logits, logits_aux = model(adv_sample)
-        loss = criterion(logits, target)
-        loss.backward()
+            optimizer.zero_grad()    # zero the parameter gradients
 
-        # nn.utils.clip_grad_norm(model.parameters(), args.grad_clip)
-        optimizer.step()
+            # generate adversarial example
+            if args.training_mode == 'adversarial':
+                adv_sample = attack.perturb(input, target, 'mean')
+                logits, logits_aux = model(adv_sample)
 
-        # print statistics
-        running_loss += loss.item()
-        if step % 2000 == 1999:    # print every 2000 mini-batches
-            print('[%d, %5d] loss: %.3f' %
-                (epoch + 1, step + 1, running_loss / 2000))
-            running_loss = 0.0
+            elif args.training_mode == 'natural':
+                logits, logits_aux = model(input)
 
-            # 敵対的サンプルの保存
-            # Reshape
-            # adv_sample : [batchsize, 3, 32, 32] -> [32, 32, 3]
-            tmp = adv_sample[0] # [3, 32, 32]
+            # forward + backward + optimize
+            loss = criterion(logits, target)
+            loss.backward()
 
-            # cast to numpy
-            red = tmp[0].detach().numpy().copy()    # [32, 32]
-            green = tmp[1].detach().numpy().copy()  # [32, 32]
-            blue = tmp[2].detach().numpy().copy()   # [32, 32]
-            adv_img = np.stack([red, green, blue], axis = 2)
+            # nn.utils.clip_grad_norm(model.parameters(), args.grad_clip)
+            optimizer.step()
 
-            # 元画像の保存
-            tmp = input[0]
-            red = tmp[0].detach().numpy().copy()    # [32, 32]
-            green = tmp[1].detach().numpy().copy()  # [32, 32]
-            blue = tmp[2].detach().numpy().copy()   # [32, 32]
-            ori_img = np.stack([red, green, blue], axis = 2)
+            # print statistics
+            running_loss += loss.item()
+            if step % 2000 == 1999:    # print every 2000 mini-batches
+                print('[%d, %5d] loss: %.3f' %
+                    (epoch + 1, step + 1, running_loss / 2000))
+                running_loss = 0.0
 
-            # figure()でグラフを表示する領域をつくり，figというオブジェクトにする．
-            fig = plt.figure(figsize=(8,10))
-
-            # add_subplot()でグラフを描画する領域を追加する．引数は行，列，場所
-            ax1 = fig.add_subplot(1, 2, 1)
-            ax2 = fig.add_subplot(1, 2, 2)
-
-            # 個別のグラフにタイトルをつける
-            title1 = "original (lagel = " + classes[target[0]] + ")"
-            ax1.set_title(title1)
-            title2 = "adversarial (epsilon = " + str(args.epsilon) + ")"
-            ax2.set_title(title2)
-
-            # 画像を表示
-            ax1.imshow(ori_img)
-            ax2.imshow(adv_img)
-
-            plt.tight_layout()
-            plt.show()
-            # 保存
-            fname = "adv-" + str(step) + ".png"
-            save_dir = "./adversarial_example"
-            plt.savefig(os.path.join(save_dir, fname), dpi = 64, facecolor = "lightgray", tight_layout = True)
-
-            print(np.all(adv_img == ori_img))
-            print(ori_img)
-            print(adv_img)
-
+                if args.training_mode == 'adversarial':
+                    visualize.save_adversarial_img(adv_sample, input, target, args.epsilon, step)
+            
+            progress_bar.update(1)
+            
     return running_loss
 
 if __name__ == '__main__':

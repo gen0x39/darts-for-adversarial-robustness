@@ -1,3 +1,16 @@
+# Environment
+OS Ubuntu 18.04.5
+PyTorch 1.8.1+cu102
+Python 3.6.9
+RTX2080
+
+# Usage
+## Natural training
+python3 train.py --training_mode natural
+
+## Adversarial training
+python3 train.py --training_mode adversarial
+
 # ディレクトリ構成
 ## utils.py
 主に実験の記録用
