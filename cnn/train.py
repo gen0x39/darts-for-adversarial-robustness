@@ -10,6 +10,7 @@ import logging
 import argparse
 import genotypes
 from tqdm import tqdm
+import random
 from datetime import datetime as dt
 
 import torch.nn as nn
@@ -61,6 +62,7 @@ def main():
     cudnn.enabled = True
 
     # set the seed of random
+    random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)

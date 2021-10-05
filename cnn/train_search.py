@@ -14,6 +14,7 @@ import torchvision.datasets as dset
 import torch.backends.cudnn as cudnn
 from tqdm import tqdm
 from datetime import datetime as dt
+import random
 
 from torch.autograd import Variable
 from model_search import Network
@@ -72,6 +73,7 @@ def main():
     cudnn.enabled = True
 
     # set the seed of random
+    random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
