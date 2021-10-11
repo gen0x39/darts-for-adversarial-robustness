@@ -72,6 +72,7 @@ def main():
 
     # genotype
     genotype = eval("genotypes.%s" % args.arch)
+    genotype = eval("genotypes.%s" % "DARTS49")
     # print(genotype)
     model = Network(CIFAR_CLASSES)
     model = model.cuda()

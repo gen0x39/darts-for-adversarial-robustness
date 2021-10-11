@@ -20,6 +20,9 @@ from torch.autograd import Variable
 from model_search import Network
 from architect import Architect
 
+from attack import FastGradientSignUntargeted
+
+
 
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--data', type=str, default='./data', help='location of the data corpus')
@@ -44,6 +47,8 @@ parser.add_argument('--train_portion', type=float, default=0.5, help='portion of
 parser.add_argument('--unrolled', action='store_true', default=False, help='use one-step unrolled validation loss')
 parser.add_argument('--arch_learning_rate', type=float, default=3e-4, help='learning rate for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
+parser.add_argument('--training_mode', type=str, default='natural', const='natural', nargs='?', choices=['adversarial', 'natural'])
+parser.add_argument('--epsilon', type=float, default=0.3, help='adversarial training epsilon')
 args = parser.parse_args()
 
 args.save = 'search-{}-{}'.format(args.save, time.strftime("%Y%m%d-%H%M%S"))
@@ -146,6 +151,9 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
 
+    attack = FastGradientSignUntargeted(model, args.epsilon, _type='l2')
+
+
     # plot progress bar
     with tqdm(total=len(train_queue),unit='batch') as progress_bar:
         progress_bar.set_description(f"Epoch[{epoch}/{args.epochs}](training) start: " + start)
@@ -162,10 +170,17 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, 
             input_search = Variable(input_search, requires_grad=False).cuda()
             target_search = Variable(target_search, requires_grad=False).cuda(non_blocking=True)
 
-            architect.step(input, target, input_search, target_search, lr, optimizer, unrolled=args.unrolled)
+            if args.training_mode == 'adversarial':
+                adv_sample = attack.perturb(input, target, 'mean')
+                architect.step(adv_sample, target, input_search, target_search, lr, optimizer, unrolled=args.unrolled)
+                optimizer.zero_grad()
+                logits = model(adv_sample)
 
-            optimizer.zero_grad()
-            logits = model(input)
+            elif args.training_mode == 'natural':
+                architect.step(input, target, input_search, target_search, lr, optimizer, unrolled=args.unrolled)
+                optimizer.zero_grad()
+                logits = model(input)
+
             loss = criterion(logits, target)
 
             loss.backward()
