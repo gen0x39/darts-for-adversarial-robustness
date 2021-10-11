@@ -1,0 +1,5 @@
+2021-10-12 01:00:52,060 gpu device = 0
+2021-10-12 01:00:52,060 args = Namespace(arch_learning_rate=0.0003, arch_weight_decay=0.001, batch_size=64, cutout=False, cutout_length=16, data='./data', drop_path_prob=0.3, epochs=50, epsilon=0.3, gpu=0, grad_clip=5, init_channels=16, layers=8, learning_rate=0.025, learning_rate_min=0.001, model_path='saved_models', momentum=0.9, report_freq=50, save='search-EXP-20211012-010052', seed=49, train_portion=0.5, training_mode='adversarial', unrolled=True, weight_decay=0.0003)
+2021-10-12 01:00:54,460 param size = 0.433658MB
+2021-10-12 01:00:55,064 epoch 0 lr 2.500000e-02
+2021-10-12 01:00:55,064 genotype = Genotype(normal=[('sep_conv_3x3', 1), ('dil_conv_3x3', 0), ('max_pool_3x3', 0), ('skip_connect', 2), ('max_pool_3x3', 0), ('sep_conv_3x3', 2), ('avg_pool_3x3', 1), ('skip_connect', 0)], normal_concat=range(2, 6), reduce=[('sep_conv_3x3', 1), ('avg_pool_3x3', 0), ('avg_pool_3x3', 2), ('skip_connect', 0), ('sep_conv_5x5', 1), ('skip_connect', 3), ('dil_conv_5x5', 4), ('sep_conv_3x3', 2)], reduce_concat=range(2, 6))

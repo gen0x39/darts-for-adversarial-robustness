@@ -23,7 +23,6 @@ def project(perturbed_image, original_image, epsilon, _type='l2'):
     return perturbed_image
 
 class FastGradientSignUntargeted():
-    # model: weight
     def __init__(self, model, epsilon, _type='l2'):
         self.model = model
         self.epsilon = epsilon
@@ -37,7 +36,6 @@ class FastGradientSignUntargeted():
         iters = 40
         with torch.enable_grad():
             for _iter in range(iters):
-                # vector dim classed
                 outputs = self.model(original)
 
                 #print("----------------")
@@ -82,8 +80,11 @@ class FastGradientSignUntargetedForArchitectureSearch():
                 outputs = self.model(original)
 
                 #print("----------------")
-                #print(outputs.size()) # torch.size([batches, classes])
-                #print(labels.size()) # torch.size([batches])
+                #print("outputs")
+                print(outputs)
+                print(labels)
+                #print(outputs.size())
+                #print(labels.size())
 
                 loss = F.cross_entropy(outputs, labels, reduction=reduction4loss)
 
